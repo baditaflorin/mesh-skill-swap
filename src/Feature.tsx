@@ -19,6 +19,10 @@ const parseTags = (s: string) =>
     .map((t) => t.trim().toLowerCase())
     .filter(Boolean);
 
+// Deterministic, order-independent key for a pair of peers so both sides
+// read/write the SAME "connected via QR" flag regardless of who scanned.
+const pairKey = (p1: string, p2: string) => (p1 < p2 ? `${p1}|${p2}` : `${p2}|${p1}`);
+
 export function Feature({ room, config }: Props) {
   if (!room) {
     return (
@@ -58,12 +62,21 @@ function Body({ room, config }: { room: YRoom; config: MeshConfig }) {
 
   useEffect(() => {
     const m = room.doc.getMap<Profile>("profiles");
+    const c = room.doc.getMap<boolean>("connected");
     const cb = () => rerender((n) => n + 1);
     m.observe(cb);
-    return () => m.unobserve(cb);
+    c.observe(cb);
+    return () => {
+      m.unobserve(cb);
+      c.unobserve(cb);
+    };
   }, [room]);
 
   const profiles = room.doc.getMap<Profile>("profiles");
+  // `connected` records pairs of peers who actually met by scanning each
+  // other's QR — the "via QR" half of the advertised feature. It is shared
+  // state, so the connection surfaces on BOTH peers' screens.
+  const connected = room.doc.getMap<boolean>("connected");
 
   useEffect(() => {
     if (name.trim()) {
@@ -77,6 +90,14 @@ function Body({ room, config }: { room: YRoom; config: MeshConfig }) {
   }, [name, teach, learn, room.peerId]);
 
   const my = profiles.get(room.peerId) ?? { name: "", teach: [], learn: [] };
+
+  // Connect with a peer I scanned: record the pair in shared state so both
+  // sides see "connected via QR". Only meaningful for an actual other peer.
+  const connectViaQR = (otherId: string) => {
+    if (!otherId || otherId === room.peerId) return;
+    if (!profiles.has(otherId)) return;
+    connected.set(pairKey(room.peerId, otherId), true);
+  };
 
   // matches: people whose teach overlaps my learn, AND vice versa
   const profileList: Array<Profile & { peerId: string }> = [];
@@ -93,6 +114,7 @@ function Body({ room, config }: { room: YRoom; config: MeshConfig }) {
         theyTeachMeWant,
         iTeachThemWant,
         mutualScore: theyTeachMeWant.length * iTeachThemWant.length,
+        connected: connected.get(pairKey(room.peerId, p.peerId)) === true,
       };
     })
     .filter((m) => m.theyTeachMeWant.length + m.iTeachThemWant.length > 0)
@@ -136,11 +158,9 @@ function Body({ room, config }: { room: YRoom; config: MeshConfig }) {
 
       <QRExchange
         myPayload={myPayload}
-        showLabel="your QR"
-        scanLabel="scan someone (optional — matches auto-compute)"
-        onScan={() => {
-          /* matches are derived from profiles, no scan needed; QR exists for the human meeting */
-        }}
+        showLabel="your QR — show to connect"
+        scanLabel="scan someone to connect via QR"
+        onScan={(parsed) => connectViaQR(parsed.peerId)}
       />
 
       <section>
@@ -150,7 +170,11 @@ function Body({ room, config }: { room: YRoom; config: MeshConfig }) {
         ) : (
           <ul className="ss-matches">
             {matches.map((m) => (
-              <li key={m.peerId} className="viral-card">
+              <li
+                key={m.peerId}
+                className={`viral-card${m.connected ? " ss-connected" : ""}`}
+                data-peer={m.peerId}
+              >
                 <strong>{m.name}</strong>
                 {m.theyTeachMeWant.length > 0 && (
                   <p>
@@ -163,6 +187,17 @@ function Body({ room, config }: { room: YRoom; config: MeshConfig }) {
                   </p>
                 )}
                 {m.mutualScore > 0 && <span className="ss-mutual">✓ mutual swap available</span>}
+                {m.connected ? (
+                  <span className="ss-qr-status">✓ connected via QR</span>
+                ) : (
+                  <button
+                    type="button"
+                    className="viral-ghost ss-connect"
+                    onClick={() => connectViaQR(m.peerId)}
+                  >
+                    connect via QR
+                  </button>
+                )}
               </li>
             ))}
           </ul>

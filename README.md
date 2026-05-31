@@ -1,7 +1,7 @@
 # mesh-skill-swap
 
 [![pages](https://img.shields.io/badge/live-baditaflorin.github.io%2Fmesh-skill-swap-8b5cf6)](https://baditaflorin.github.io/mesh-skill-swap/)
-[![version](https://img.shields.io/badge/version-0.1.0-blue)](https://github.com/baditaflorin/mesh-skill-swap/blob/main/package.json)
+[![version](https://img.shields.io/badge/version-0.1.1-blue)](https://github.com/baditaflorin/mesh-skill-swap/blob/main/package.json)
 [![license](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 
 > Match complementary teach/learn tags with people in the room via QR
